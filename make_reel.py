@@ -65,7 +65,8 @@ def main():
     still = OUT / f"{stamp}.jpg"
     video = OUT / f"{stamp}.mp4"
 
-    generate_image(scene, still, width=1080, height=1920)
+    generate_image(scene, still, width=1080, height=1920, cfg=cfg,
+                   gemini_key=os.environ["GEMINI_KEY"])
     print("Still saved:", still.name)
 
     build_video(still, video)

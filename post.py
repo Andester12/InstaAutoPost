@@ -8,7 +8,9 @@ Env vars required:
   GH_REPO     "username/repo"  -> used to build the public raw image URL
 """
 
+import base64
 import datetime
+import io
 import json
 import os
 import pathlib
@@ -17,6 +19,7 @@ import time
 import urllib.parse
 
 import requests
+from PIL import Image
 
 GRAPH = "https://graph.instagram.com/v21.0"
 POSTS_DIR = pathlib.Path("posts")
@@ -116,8 +119,59 @@ def generate_text(topic, style, gemini_key):
     return scene.strip(), caption.strip()
 
 
-def generate_image(scene, path, width=1080, height=1080):
-    """Free image generation, no API key needed."""
+def _fit(raw, path, width, height):
+    """Force exact output dimensions.
+
+    Instagram rejects feed images outside roughly 4:5 to 1.91:1, and reels
+    want 9:16, so whatever the generator returns gets centre-cropped to the
+    target rather than trusted.
+    """
+    im = Image.open(io.BytesIO(raw)).convert("RGB")
+    target = width / height
+    have = im.width / im.height
+    if have > target:                      # too wide -> crop sides
+        new_w = int(im.height * target)
+        left = (im.width - new_w) // 2
+        im = im.crop((left, 0, left + new_w, im.height))
+    elif have < target:                    # too tall -> crop top/bottom
+        new_h = int(im.width / target)
+        top = (im.height - new_h) // 2
+        im = im.crop((0, top, im.width, top + new_h))
+    im = im.resize((width, height), Image.LANCZOS)
+    im.save(path, "JPEG", quality=90)
+
+
+def _gemini_image(scene, path, key, width, height, model):
+    """Nano Banana. Requires billing -- image models have no free tier."""
+    ratio = "9:16" if height > width else ("1:1" if height == width else "16:9")
+    headers = {"x-goog-api-key": key, "Content-Type": "application/json"}
+    body = {"contents": [{"parts": [{"text": scene}]}]}
+
+    for cfg in (
+        {"responseModalities": ["IMAGE"], "imageConfig": {"aspectRatio": ratio}},
+        {"responseModalities": ["IMAGE"]},
+    ):
+        r = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent",
+            headers=headers, json={**body, "generationConfig": cfg}, timeout=TIMEOUT,
+        )
+        if r.status_code == 400:
+            continue                        # imageConfig unsupported -> try bare
+        if not r.ok:
+            raise RuntimeError(f"{model} -> HTTP {r.status_code}: {r.text[:200]}")
+        parts = r.json()["candidates"][0]["content"]["parts"]
+        blob = next((p.get("inlineData") or p.get("inline_data")
+                     for p in parts if "inlineData" in p or "inline_data" in p), None)
+        if not blob:
+            raise RuntimeError(f"{model} returned no image data")
+        _fit(base64.b64decode(blob["data"]), path, width, height)
+        return
+    raise RuntimeError(f"{model} rejected both request shapes")
+
+
+def _pollinations_image(scene, path, width, height):
+    """Free, unauthenticated, rate limited under load."""
     url = (
         "https://image.pollinations.ai/prompt/"
         + urllib.parse.quote(scene)
@@ -126,10 +180,29 @@ def generate_image(scene, path, width=1080, height=1080):
     for attempt in range(3):
         r = requests.get(url, timeout=TIMEOUT)
         if r.ok and r.headers.get("content-type", "").startswith("image/"):
-            path.write_bytes(r.content)
+            _fit(r.content, path, width, height)
             return
         time.sleep(20)  # anonymous tier is rate limited
     raise RuntimeError("Image generation failed after 3 attempts")
+
+
+def generate_image(scene, path, width=1080, height=1080, cfg=None, gemini_key=None):
+    """Gemini if configured and paid for, Pollinations otherwise.
+
+    Gemini failures fall back rather than killing the run: a lapsed card or a
+    quota change should degrade the images, not stop the account posting.
+    """
+    cfg = cfg or {}
+    if cfg.get("image_provider") == "gemini" and gemini_key:
+        try:
+            _gemini_image(scene, path, gemini_key, width, height,
+                          cfg.get("image_model", "gemini-2.5-flash-image"))
+            print("Image via Gemini:", cfg.get("image_model"))
+            return
+        except Exception as e:
+            print(f"Gemini image failed ({e}); falling back to Pollinations")
+    _pollinations_image(scene, path, width, height)
+    print("Image via Pollinations")
 
 
 def publish(image_url, caption, ig_id, token):
@@ -181,7 +254,8 @@ def main():
 
     POSTS_DIR.mkdir(exist_ok=True)
     name = f"{datetime.datetime.now(datetime.timezone.utc):%Y%m%d-%H%M}.jpg"
-    generate_image(scene, POSTS_DIR / name)
+    generate_image(scene, POSTS_DIR / name, cfg=cfg,
+                   gemini_key=os.environ["GEMINI_KEY"])
     print("Image saved:", name)
 
     # The commit step in the workflow runs between here and publish.py's URL use,
