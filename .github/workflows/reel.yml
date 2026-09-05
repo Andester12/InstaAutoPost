@@ -22,8 +22,13 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Check ffmpeg
-        run: ffmpeg -version | head -1
+      # ffmpeg is no longer preinstalled on the ubuntu-latest image.
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          set -o pipefail
+          ffmpeg -version | head -1
 
       - name: Generate reel
         id: gen
