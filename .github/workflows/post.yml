@@ -64,7 +64,7 @@ jobs:
           python publish.py 2>&1 | tee -a debug/last_run.log
 
       - name: Report run log
-        if: steps.gen.outcome != 'success' || steps.pub.outcome != 'success'
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}

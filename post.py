@@ -49,10 +49,19 @@ def generate_text(topic, style, gemini_key):
     prompt = (
         f"You write content for an Instagram account about: {topic}\n"
         f"Visual style: {style}\n\n"
+        "The image and the caption do different jobs. The image is pure "
+        "atmosphere. The caption carries the substance.\n\n"
         "Invent ONE new post. Reply with exactly two blocks separated by |||\n"
-        "Block 1: a single-sentence image-generation prompt describing the visual. "
-        "No text or words in the image.\n"
-        "Block 2: an Instagram caption, 2-3 sentences, then 5 relevant hashtags.\n"
+        "Block 1: a single-sentence image-generation prompt describing an "
+        "aesthetic scene or object in the visual style above - something that "
+        "photographs well. Never describe charts, graphs, diagrams, screens, "
+        "numbers, logos, faces, or any text appearing in the image.\n"
+        "Block 2: an Instagram caption, 2-3 sentences, explaining ONE concrete "
+        "economic idea connected to what is pictured, then 5 relevant hashtags. "
+        "Explain how something works. Never give financial advice, never "
+        "recommend buying or selling anything, never promise or imply returns, "
+        "and never invent statistics, percentages, prices or dates - if you do "
+        "not know a figure, describe the mechanism without numbers.\n"
         "Return nothing else. No markdown, no labels, no preamble."
     )
     headers = {"x-goog-api-key": gemini_key, "Content-Type": "application/json"}
