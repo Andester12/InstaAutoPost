@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: write            # needed to commit the generated image
-  issues: write              # run log is reported as an issue (temporary, for setup)
+  issues: write              # setup-time run log reporting
 
 jobs:
   post:
@@ -26,19 +26,18 @@ jobs:
         continue-on-error: true
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
-          IG_TOKEN:   ${{ secrets.IG_TOKEN }}
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
-          GH_REPO:    ${{ github.repository }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mkdir -p debug
-          : > debug/last_run.log
           set -o pipefail
-          python post.py 2>&1 | tee -a debug/last_run.log
+          python post.py 2>&1 | tee debug/last_run.log
 
       - name: Commit image so Meta can fetch it
         if: steps.gen.outcome == 'success'
         run: |
-          git config user.name  "ig-bot"
+          git config user.name "ig-bot"
           git config user.email "ig-bot@users.noreply.github.com"
           git add posts/
           git commit -m "post $(date -u +%F)" || echo "nothing to commit"
@@ -49,32 +48,19 @@ jobs:
         if: steps.gen.outcome == 'success'
         continue-on-error: true
         env:
-          IG_TOKEN:   ${{ secrets.IG_TOKEN }}
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
         run: |
           set -o pipefail
           python publish.py 2>&1 | tee -a debug/last_run.log
 
-      - name: Report run log as an issue
+      - name: Report run log
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO:     ${{ github.repository }}
-          RUNID:    ${{ github.run_id }}
-        run: |
-          LOG=$(tail -c 55000 debug/last_run.log 2>/dev/null || echo "(no log file produced)")
-          python3 - <<'EOF' > /tmp/issue.json
-          import json, os
-          log = open("debug/last_run.log").read()[-55000:] if os.path.exists("debug/last_run.log") else "(no log file produced)"
-          json.dump({"title": "run log " + os.environ["RUNID"],
-                     "body": "```
-" + log + "
-```"}, open("/dev/stdout","w"))
-          EOF
-          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
-               -H "Accept: application/vnd.github+json" \
-               "https://api.github.com/repos/$REPO/issues" -d @/tmp/issue.json \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print('issue', d.get('number', d.get('message')))"
+          REPO: ${{ github.repository }}
+          RUNID: ${{ github.run_id }}
+        run: python report.py
 
       - name: Surface failure
         if: steps.gen.outcome != 'success' || steps.pub.outcome != 'success'
