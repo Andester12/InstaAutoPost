@@ -2,10 +2,9 @@ name: daily post
 
 on:
   schedule:
-    # 4x daily, every 6h: 05:37 / 11:37 / 17:37 / 23:37 IST.
-    # Odd minute on purpose -- the top of the hour is the most contended slot
-    # on GitHub's scheduler and drifts the most.
-    - cron: "7 0,6,12,18 * * *"
+    # 2x daily: 09:37 and 21:37 IST. Odd minute on purpose -- the top of the
+    # hour is the most contended slot on GitHub's scheduler and drifts most.
+    - cron: "7 4,16 * * *"
   workflow_dispatch:         # lets you trigger a test run from the Actions tab
 
 permissions:
@@ -34,6 +33,7 @@ jobs:
         continue-on-error: true
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           GH_REPO: ${{ github.repository }}

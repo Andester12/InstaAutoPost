@@ -2,9 +2,8 @@ name: weekly reel
 
 on:
   schedule:
-    # 4x daily, offset 3h from the feed posts so something goes out roughly
-    # every 3 hours: 09:07 / 15:07 / 21:07 / 03:07 IST.
-    - cron: "37 3,9,15,21 * * *"
+    # Once daily at 15:07 IST, between the two feed posts.
+    - cron: "37 9 * * *"
   workflow_dispatch:
 
 permissions:
@@ -40,6 +39,7 @@ jobs:
         continue-on-error: true
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
           mkdir -p debug

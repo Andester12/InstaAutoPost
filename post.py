@@ -56,9 +56,11 @@ def generate_text(topic, style, gemini_key):
         "atmosphere. The caption carries the substance.\n\n"
         "Invent ONE new post. Reply with exactly two blocks separated by |||\n"
         "Block 1: a single-sentence image-generation prompt describing an "
-        "aesthetic scene or object in the visual style above - something that "
-        "photographs well. Never describe charts, graphs, diagrams, screens, "
-        "numbers, logos, faces, or any text appearing in the image.\n"
+        "aesthetic scene in the visual style above. Name ONE clear subject and "
+        "keep it sharply in focus. Do not use the words blurred, blurry, bokeh, "
+        "hazy, soft focus, shallow depth of field, or dreamy - the generator "
+        "over-applies them and ruins the subject. Never describe charts, graphs, "
+        "diagrams, screens, numbers, logos, faces, or any text in the image.\n"
         "Block 2: an Instagram caption, 2-3 sentences, explaining ONE concrete "
         "economic idea connected to what is pictured, then 5 relevant hashtags. "
         "Explain how something works. Never give financial advice, never "
@@ -170,15 +172,30 @@ def _gemini_image(scene, path, key, width, height, model):
     raise RuntimeError(f"{model} rejected both request shapes")
 
 
-def _pollinations_image(scene, path, width, height):
-    """Free, unauthenticated, rate limited under load."""
+def _pollinations_image(scene, path, width, height, cfg=None):
+    """Free. Anonymous is 1 request/15s; a free account token lifts that to
+    1/5s and guarantees no watermark."""
+    cfg = cfg or {}
+    params = {
+        "width": width,
+        "height": height,
+        "nologo": "true",
+        "model": cfg.get("pollinations_model", "flux"),
+    }
+    if cfg.get("enhance"):
+        params["enhance"] = "true"
     url = (
         "https://image.pollinations.ai/prompt/"
         + urllib.parse.quote(scene)
-        + f"?width={width}&height={height}&nologo=true"
+        + "?" + urllib.parse.urlencode(params)
     )
+    headers = {}
+    token = os.environ.get("POLLINATIONS_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
     for attempt in range(3):
-        r = requests.get(url, timeout=TIMEOUT)
+        r = requests.get(url, headers=headers, timeout=TIMEOUT)
         if r.ok and r.headers.get("content-type", "").startswith("image/"):
             _fit(r.content, path, width, height)
             return
@@ -201,8 +218,8 @@ def generate_image(scene, path, width=1080, height=1080, cfg=None, gemini_key=No
             return
         except Exception as e:
             print(f"Gemini image failed ({e}); falling back to Pollinations")
-    _pollinations_image(scene, path, width, height)
-    print("Image via Pollinations")
+    _pollinations_image(scene, path, width, height, cfg)
+    print("Image via Pollinations:", cfg.get("pollinations_model", "flux"))
 
 
 def publish(image_url, caption, ig_id, token):
