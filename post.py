@@ -80,7 +80,15 @@ def generate_text(topic, style, gemini_key):
         # Free tier returns 503/429 under load often enough that one attempt
         # is not a fair test of a model.
         for attempt in range(4):
-            r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+            except requests.RequestException as e:
+                # timeouts and connection resets are as transient as a 503
+                if attempt < 3:
+                    time.sleep(10 * (attempt + 1))
+                    continue
+                errors.append(f"{model}: {type(e).__name__} after 4 tries")
+                break
             if r.status_code in (429, 500, 503):
                 if attempt < 3:
                     time.sleep(10 * (attempt + 1))
