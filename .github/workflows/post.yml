@@ -2,12 +2,20 @@ name: daily post
 
 on:
   schedule:
-    - cron: "30 12 * * *"   # 18:00 IST. GitHub cron is UTC and can drift 5-15 min.
+    # 4x daily, every 6h: 05:37 / 11:37 / 17:37 / 23:37 IST.
+    # Odd minute on purpose -- the top of the hour is the most contended slot
+    # on GitHub's scheduler and drifts the most.
+    - cron: "7 0,6,12,18 * * *"
   workflow_dispatch:         # lets you trigger a test run from the Actions tab
 
 permissions:
   contents: write            # needed to commit the generated image
   issues: write              # setup-time run log reporting
+
+# Two runs must never push to main at once.
+concurrency:
+  group: publish-main
+  cancel-in-progress: false
 
 jobs:
   post:
@@ -39,6 +47,7 @@ jobs:
         run: |
           git config user.name "ig-bot"
           git config user.email "ig-bot@users.noreply.github.com"
+          git pull --rebase --autostash || true
           git add posts/
           git commit -m "post $(date -u +%F)" || echo "nothing to commit"
           git push

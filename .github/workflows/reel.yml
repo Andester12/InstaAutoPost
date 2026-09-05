@@ -2,13 +2,18 @@ name: weekly reel
 
 on:
   schedule:
-    - cron: "37 12 * * 3"   # Wednesdays ~18:07 IST. Odd minute: the top of the
-                            # hour is heavily contended and drifts most.
+    # 4x daily, offset 3h from the feed posts so something goes out roughly
+    # every 3 hours: 09:07 / 15:07 / 21:07 / 03:07 IST.
+    - cron: "37 3,9,15,21 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
   issues: write
+
+concurrency:
+  group: publish-reel
+  cancel-in-progress: false
 
 jobs:
   reel:
