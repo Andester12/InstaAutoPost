@@ -20,6 +20,7 @@ jobs:
       - run: |
           git config user.name  "ig-bot"
           git config user.email "ig-bot@users.noreply.github.com"
+          git pull --rebase --autostash || true
           git add -A posts/
-          git commit -m "prune old images" || exit 0
+          git commit -m "prune old images" || echo "nothing to prune"
           git push

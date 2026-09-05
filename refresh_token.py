@@ -25,13 +25,21 @@ TIMEOUT = 60
 
 
 def refresh(token):
-    r = requests.get(
-        "https://graph.instagram.com/refresh_access_token",
-        params={"grant_type": "ig_refresh_token", "access_token": token},
-        timeout=TIMEOUT,
-    )
+    """The token travels in the query string because Meta requires it there.
+    Any exception from requests embeds the full URL, so scrub before it
+    escapes -- an unscrubbed traceback in a public log burns the token."""
+    try:
+        r = requests.get(
+            "https://graph.instagram.com/refresh_access_token",
+            params={"grant_type": "ig_refresh_token", "access_token": token},
+            timeout=TIMEOUT,
+        )
+    except Exception as e:
+        raise RuntimeError(str(e).replace(token, "<IG_TOKEN>")) from None
     if not r.ok:
-        raise RuntimeError(f"Refresh failed: {r.status_code} {r.text}")
+        raise RuntimeError(
+            f"Refresh failed: {r.status_code} {r.text.replace(token, '<IG_TOKEN>')}"
+        )
     data = r.json()
     print(f"New token valid for ~{int(data['expires_in']) // 86400} days")
     return data["access_token"]
