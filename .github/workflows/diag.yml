@@ -1,0 +1,22 @@
+name: diag models
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - env:
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: python diag_models.py

@@ -60,6 +60,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           RUNID: ${{ github.run_id }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
         run: python report.py
 
       - name: Surface failure
