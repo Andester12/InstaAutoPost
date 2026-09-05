@@ -47,10 +47,21 @@ jobs:
         run: |
           git config user.name "ig-bot"
           git config user.email "ig-bot@users.noreply.github.com"
-          git pull --rebase --autostash || true
           git add posts/
           git commit -m "post $(date -u +%F)" || echo "nothing to commit"
-          git push
+          # Another run may push between our rebase and our push, so retry the
+          # whole rebase-and-push cycle rather than rebasing once up front.
+          for attempt in 1 2 3 4; do
+            git pull --rebase --autostash origin main || true
+            if git push; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "push rejected, retrying"
+            sleep $((attempt * 5))
+          done
+          echo "could not push after 4 attempts" >&2
+          exit 1
 
       - name: Publish to Instagram
         id: pub
@@ -64,7 +75,7 @@ jobs:
           python publish.py 2>&1 | tee -a debug/last_run.log
 
       - name: Report run log
-        if: always()
+        if: steps.gen.outcome != 'success' || steps.pub.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
