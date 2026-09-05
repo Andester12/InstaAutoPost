@@ -1,0 +1,43 @@
+name: daily post
+
+on:
+  schedule:
+    - cron: "30 12 * * *"   # 18:00 IST. GitHub cron is UTC and can drift 5-15 min.
+  workflow_dispatch:         # lets you trigger a test run from the Actions tab
+
+permissions:
+  contents: write            # needed to commit the generated image
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Generate image + caption
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          IG_TOKEN:   ${{ secrets.IG_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          GH_REPO:    ${{ github.repository }}
+        run: python post.py
+
+      - name: Commit image so Meta can fetch it
+        run: |
+          git config user.name  "ig-bot"
+          git config user.email "ig-bot@users.noreply.github.com"
+          git add posts/
+          git commit -m "post $(date -u +%F)" || exit 0
+          git push
+
+      - name: Publish to Instagram
+        env:
+          IG_TOKEN:   ${{ secrets.IG_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        run: python publish.py
