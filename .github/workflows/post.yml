@@ -21,23 +21,50 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Generate image + caption
+        id: gen
+        continue-on-error: true
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
           IG_TOKEN:   ${{ secrets.IG_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           GH_REPO:    ${{ github.repository }}
-        run: python post.py
+        run: |
+          mkdir -p debug
+          : > debug/last_run.log
+          set -o pipefail
+          python post.py 2>&1 | tee -a debug/last_run.log
 
       - name: Commit image so Meta can fetch it
+        if: steps.gen.outcome == 'success'
         run: |
           git config user.name  "ig-bot"
           git config user.email "ig-bot@users.noreply.github.com"
           git add posts/
-          git commit -m "post $(date -u +%F)" || exit 0
+          git commit -m "post $(date -u +%F)" || echo "nothing to commit"
           git push
 
       - name: Publish to Instagram
+        id: pub
+        if: steps.gen.outcome == 'success'
+        continue-on-error: true
         env:
           IG_TOKEN:   ${{ secrets.IG_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
-        run: python publish.py
+        run: |
+          set -o pipefail
+          python publish.py 2>&1 | tee -a debug/last_run.log
+
+      - name: Publish run log back to the repo
+        if: always()
+        run: |
+          git config user.name  "ig-bot"
+          git config user.email "ig-bot@users.noreply.github.com"
+          git pull --rebase --autostash || true
+          mkdir -p debug
+          git add -f debug/last_run.log
+          git commit -m "run log $(date -u +%FT%TZ)" || echo "nothing to commit"
+          git push || true
+
+      - name: Surface failure
+        if: steps.gen.outcome != 'success' || steps.pub.outcome != 'success'
+        run: exit 1
