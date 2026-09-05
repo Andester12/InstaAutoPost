@@ -28,8 +28,22 @@ def load_config():
         return json.load(f)
 
 
+MODELS = [
+    "gemini-2.5-flash",
+    "gemini-flash-latest",
+    "gemini-2.0-flash",
+]
+
+
 def generate_text(topic, style, gemini_key):
-    """Ask Gemini for a scene description + caption. Returns (scene, caption)."""
+    """Ask Gemini for a scene description + caption. Returns (scene, caption).
+
+    The key goes in a header, never the query string: requests puts the full
+    URL into its exception messages, and those get logged.
+
+    Model names are tried in order because Google retires them on a rolling
+    basis -- a hardcoded name is a guaranteed future 404.
+    """
     prompt = (
         f"You write content for an Instagram account about: {topic}\n"
         f"Visual style: {style}\n\n"
@@ -39,21 +53,29 @@ def generate_text(topic, style, gemini_key):
         "Block 2: an Instagram caption, 2-3 sentences, then 5 relevant hashtags.\n"
         "Return nothing else. No markdown, no labels, no preamble."
     )
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        "gemini-2.0-flash:generateContent"
-    )
-    r = requests.post(
-        url,
-        params={"key": gemini_key},
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 1.0},
-        },
-        timeout=TIMEOUT,
-    )
-    r.raise_for_status()
-    raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+    headers = {"x-goog-api-key": gemini_key, "Content-Type": "application/json"}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 1.0},
+    }
+
+    errors = []
+    for model in MODELS:
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent"
+        )
+        r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+        if r.status_code == 404:
+            errors.append(f"{model}: 404 (retired or unavailable)")
+            continue
+        if not r.ok:
+            # never echo r.url -- it is clean now, but stay defensive
+            raise RuntimeError(f"Gemini {model} -> HTTP {r.status_code}: {r.text[:300]}")
+        raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+        break
+    else:
+        raise RuntimeError("No usable Gemini model. Tried: " + "; ".join(errors))
 
     if "|||" not in raw:
         raise ValueError(f"Model did not use the separator. Got: {raw[:300]}")
