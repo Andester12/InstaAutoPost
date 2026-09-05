@@ -29,9 +29,11 @@ def load_config():
 
 
 MODELS = [
-    "gemini-2.5-flash",
-    "gemini-flash-latest",
-    "gemini-2.0-flash",
+    "gemini-2.5-flash",        # stable, generous free tier
+    "gemini-flash-latest",     # alias, tracks whatever is current
+    "gemini-3.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-lite-latest",
 ]
 
 
