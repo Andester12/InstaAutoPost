@@ -99,12 +99,12 @@ def generate_text(topic, style, gemini_key):
     return scene.strip(), caption.strip()
 
 
-def generate_image(scene, path):
+def generate_image(scene, path, width=1080, height=1080):
     """Free image generation, no API key needed."""
     url = (
         "https://image.pollinations.ai/prompt/"
         + urllib.parse.quote(scene)
-        + "?width=1080&height=1080&nologo=true"
+        + f"?width={width}&height={height}&nologo=true"
     )
     for attempt in range(3):
         r = requests.get(url, timeout=TIMEOUT)

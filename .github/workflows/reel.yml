@@ -1,0 +1,85 @@
+name: weekly reel
+
+on:
+  schedule:
+    - cron: "37 12 * * 3"   # Wednesdays ~18:07 IST. Odd minute: the top of the
+                            # hour is heavily contended and drifts most.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  reel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Check ffmpeg
+        run: ffmpeg -version | head -1
+
+      - name: Generate reel
+        id: gen
+        continue-on-error: true
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p debug
+          : > debug/last_run.log
+          set -o pipefail
+          python make_reel.py 2>&1 | tee debug/last_run.log
+
+      # The mp4 goes to a throwaway orphan branch that is replaced wholesale
+      # every run, so video never enters main's history. Deleting a committed
+      # file does not shrink a repo; never committing it does.
+      - name: Push video to the media branch
+        if: steps.gen.outcome == 'success'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WORK=$(mktemp -d)
+          cp reel_out/*.mp4 "$WORK"/
+          cd "$WORK"
+          git init -q -b media
+          git config user.name "ig-bot"
+          git config user.email "ig-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "reel $(date -u +%F)"
+          git push -q --force \
+            "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            media:media
+          echo "pushed $(ls *.mp4) to media branch"
+
+      - name: Publish reel to Instagram
+        id: pub
+        if: steps.gen.outcome == 'success'
+        continue-on-error: true
+        env:
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        run: |
+          set -o pipefail
+          python publish_reel.py 2>&1 | tee -a debug/last_run.log
+
+      - name: Report run log
+        if: steps.gen.outcome != 'success' || steps.pub.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUNID: ${{ github.run_id }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        run: python report.py
+
+      - name: Surface failure
+        if: steps.gen.outcome != 'success' || steps.pub.outcome != 'success'
+        run: exit 1
