@@ -60,21 +60,35 @@ def generate_text(topic, style, gemini_key):
     }
 
     errors = []
+    raw = None
     for model in MODELS:
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{model}:generateContent"
         )
-        r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
-        if r.status_code == 404:
-            errors.append(f"{model}: 404 (retired or unavailable)")
-            continue
-        if not r.ok:
-            # never echo r.url -- it is clean now, but stay defensive
-            raise RuntimeError(f"Gemini {model} -> HTTP {r.status_code}: {r.text[:300]}")
-        raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-        break
-    else:
+        # Free tier returns 503/429 under load often enough that one attempt
+        # is not a fair test of a model.
+        for attempt in range(4):
+            r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+            if r.status_code in (429, 500, 503):
+                if attempt < 3:
+                    time.sleep(10 * (attempt + 1))
+                    continue
+                errors.append(f"{model}: {r.status_code} after 4 tries")
+                break
+            if r.status_code == 404:
+                errors.append(f"{model}: 404 (retired or unavailable)")
+                break
+            if not r.ok:
+                # never echo r.url -- it is clean now, but stay defensive
+                raise RuntimeError(
+                    f"Gemini {model} -> HTTP {r.status_code}: {r.text[:300]}"
+                )
+            raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            break
+        if raw is not None:
+            break
+    if raw is None:
         raise RuntimeError("No usable Gemini model. Tried: " + "; ".join(errors))
 
     if "|||" not in raw:
